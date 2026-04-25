@@ -2,7 +2,10 @@ import json
 import os
 import threading
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+DATA_DIR = os.environ.get(
+    "DATA_DIR",
+    os.path.join(os.path.dirname(__file__), "data"),
+)
 COUNTER_FILE = os.path.join(DATA_DIR, "counter.json")
 _lock = threading.Lock()
 
