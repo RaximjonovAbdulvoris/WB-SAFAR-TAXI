@@ -1,9 +1,12 @@
+from html import escape as h
+
 from telegram import (
     KeyboardButton,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
     Update,
 )
+from telegram.constants import ParseMode
 from telegram.ext import (
     CommandHandler,
     ContextTypes,
@@ -22,7 +25,8 @@ from bot.handlers.start import MAIN_KEYBOARD, MENU_BRAND, cancel
     BRAND_MODEL,
     BRAND_YEAR,
     BRAND_COLOR,
-) = range(20, 26)
+    BRAND_PLATE,
+) = range(20, 27)
 
 CONTINUE_BTN = "✅ Davom etish"
 CONTINUE_KB = ReplyKeyboardMarkup(
@@ -129,8 +133,26 @@ async def brand_get_color(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text("❗ Iltimos, mashina rangini yozing:")
         return BRAND_COLOR
     context.user_data["b_color"] = color
+    await update.message.reply_text(
+        "🔢 Mashinangizning *davlat raqamini* yozing (masalan: `01A123BC`):",
+        parse_mode="Markdown",
+    )
+    return BRAND_PLATE
 
-    await _send_brand_to_group(update, context)
+
+async def brand_get_plate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    plate = (update.message.text or "").strip().upper()
+    if len(plate) < 5:
+        await update.message.reply_text("❗ Iltimos, to'g'ri davlat raqamini kiriting:")
+        return BRAND_PLATE
+    context.user_data["b_plate"] = plate
+
+    user = update.effective_user
+    context.user_data["user_id"] = user.id
+    context.user_data["user_username"] = user.username or ""
+    context.user_data["user_full_name"] = user.full_name or ""
+
+    await _send_brand_to_group(context)
 
     await update.message.reply_text(
         "🎉 *Tabriklaymiz!*\n\n"
@@ -143,19 +165,30 @@ async def brand_get_color(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return ConversationHandler.END
 
 
-async def _send_brand_to_group(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def _send_brand_to_group(context: ContextTypes.DEFAULT_TYPE):
     d = context.user_data
+
+    user_id = d.get("user_id")
+    username = d.get("user_username", "")
+    full_name = d.get("user_full_name", "") or "Foydalanuvchi"
+    display = f"@{username}" if username else full_name
+    user_link_html = (
+        f'<a href="tg://user?id={user_id}">{h(display)}</a>' if user_id else h(display)
+    )
+
     text = (
-        "🎨 *YANGI BREND ARIZA*\n\n"
-        f"👤 FIO: {d.get('b_name', '-')}\n"
-        f"📞 Tel: {d.get('b_phone', '-')}\n"
-        f"🚗 Model: {d.get('b_model', '-')}\n"
-        f"📅 Yili: {d.get('b_year', '-')}\n"
-        f"🎨 Rangi: {d.get('b_color', '-')}"
+        "🎨 <b>YANGI BREND ARIZA</b>\n\n"
+        f"👤 Foydalanuvchi: {user_link_html}\n"
+        f"🪪 FIO: {h(d.get('b_name', '-'))}\n"
+        f"📞 Tel: {h(d.get('b_phone', '-'))}\n"
+        f"🚗 Model: {h(d.get('b_model', '-'))}\n"
+        f"📅 Yili: {h(d.get('b_year', '-'))}\n"
+        f"🎨 Rangi: {h(d.get('b_color', '-'))}\n"
+        f"🔢 Davlat raqami: {h(d.get('b_plate', '-'))}"
     )
     try:
         await context.bot.send_message(
-            chat_id=BRAND_GROUP, text=text, parse_mode="Markdown"
+            chat_id=BRAND_GROUP, text=text, parse_mode=ParseMode.HTML
         )
     except Exception as e:
         print(f"[brand] failed to send to {BRAND_GROUP}: {e}")
@@ -179,6 +212,7 @@ def build_brand_conversation() -> ConversationHandler:
             BRAND_MODEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_model)],
             BRAND_YEAR: [MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_year)],
             BRAND_COLOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_color)],
+            BRAND_PLATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_plate)],
         },
         fallbacks=[CommandHandler("cancel", cancel), CommandHandler("start", cancel)],
         allow_reentry=True,

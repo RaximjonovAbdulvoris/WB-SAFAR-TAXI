@@ -1,3 +1,5 @@
+from html import escape as h
+
 from telegram import (
     InputMediaPhoto,
     KeyboardButton,
@@ -5,6 +7,7 @@ from telegram import (
     ReplyKeyboardRemove,
     Update,
 )
+from telegram.constants import ParseMode
 from telegram.ext import (
     CommandHandler,
     ContextTypes,
@@ -250,12 +253,8 @@ async def get_car_plate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     user = update.effective_user
     context.user_data["user_id"] = user.id
-    context.user_data["user_link"] = (
-        f"@{user.username}" if user.username else f"tg://user?id={user.id}"
-    )
-    context.user_data["user_display"] = (
-        f"@{user.username}" if user.username else (user.full_name or str(user.id))
-    )
+    context.user_data["user_username"] = user.username or ""
+    context.user_data["user_full_name"] = user.full_name or ""
 
     await _send_to_driver_group(context)
 
@@ -277,14 +276,22 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
     idx = next_index("driver_group_rr", len(DRIVER_GROUPS))
     chat_id = DRIVER_GROUPS[idx]
 
-    caption_main = (
-        "📝 *YANGI ARIZA*\n\n"
-        f"👤 Foydalanuvchi: {d.get('user_link', '-')}\n"
-        f"🪪 Ism familiya: {d.get('name', '-')}\n"
-        f"📞 Tel: {d.get('phone', '-')}\n"
-        f"🚗 Mashina raqami: {d.get('car_plate', '-')}"
+    user_id = d.get("user_id")
+    username = d.get("user_username", "")
+    full_name = d.get("user_full_name", "") or "Foydalanuvchi"
+    display = f"@{username}" if username else full_name
+    user_link_html = (
+        f'<a href="tg://user?id={user_id}">{h(display)}</a>' if user_id else h(display)
     )
-    caption_selfie = f"🤳 {d.get('name', '-')} — litsenziya va selfie"
+
+    caption_main = (
+        "📝 <b>YANGI ARIZA</b>\n\n"
+        f"👤 Foydalanuvchi: {user_link_html}\n"
+        f"🪪 Ism familiya: {h(d.get('name', '-'))}\n"
+        f"📞 Tel: {h(d.get('phone', '-'))}\n"
+        f"🚗 Mashina raqami: {h(d.get('car_plate', '-'))}"
+    )
+    caption_selfie = f"🤳 {h(d.get('name', '-'))} — litsenziya va selfie"
 
     main_album_ids = [
         d.get("passport_front"),
@@ -305,7 +312,7 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
                 InputMediaPhoto(
                     media=fid,
                     caption=caption_main if i == 0 else None,
-                    parse_mode="Markdown" if i == 0 else None,
+                    parse_mode=ParseMode.HTML if i == 0 else None,
                 )
                 for i, fid in enumerate(main_album_ids)
             ]
@@ -315,6 +322,7 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
                 InputMediaPhoto(
                     media=fid,
                     caption=caption_selfie if i == 0 else None,
+                    parse_mode=ParseMode.HTML if i == 0 else None,
                 )
                 for i, fid in enumerate(selfie_album_ids)
             ]
