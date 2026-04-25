@@ -14,6 +14,7 @@ from telegram.ext import (
 )
 
 from bot.config import DRIVER_GROUPS, template_path
+from bot.counter import next_index
 from bot.handlers.start import MAIN_KEYBOARD, MENU_DRIVER, cancel
 
 (
@@ -40,15 +41,14 @@ CONTINUE_KB = ReplyKeyboardMarkup(
 
 async def _send_prompt(update: Update, text: str, template_name: str | None = None,
                        reply_markup=None):
-    """Send a prompt with optional template image."""
+    """Send a prompt with an optional example image (sent first, then text)."""
     path = template_path(template_name) if template_name else None
     if path:
         with open(path, "rb") as f:
             await update.message.reply_photo(
-                photo=f, caption=text, reply_markup=reply_markup
+                photo=f, caption="📌 Namuna / Example"
             )
-    else:
-        await update.message.reply_text(text, reply_markup=reply_markup)
+    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
 
 
 # ---------- entry ----------
@@ -257,7 +257,7 @@ async def get_car_plate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
         f"@{user.username}" if user.username else (user.full_name or str(user.id))
     )
 
-    await _send_to_driver_groups(context)
+    await _send_to_driver_group(context)
 
     await update.message.reply_text(
         "🎉 *Tabriklaymiz!*\n\n"
@@ -270,8 +270,13 @@ async def get_car_plate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     return ConversationHandler.END
 
 
-async def _send_to_driver_groups(context: ContextTypes.DEFAULT_TYPE):
+async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
+    """Send the application to ONE driver group, rotating through them
+    in order: 1st app → group 1, 2nd → group 2, ... 5th → group 1 again."""
     d = context.user_data
+    idx = next_index("driver_group_rr", len(DRIVER_GROUPS))
+    chat_id = DRIVER_GROUPS[idx]
+
     caption_main = (
         "📝 *YANGI ARIZA*\n\n"
         f"👤 Foydalanuvchi: {d.get('user_link', '-')}\n"
@@ -294,29 +299,28 @@ async def _send_to_driver_groups(context: ContextTypes.DEFAULT_TYPE):
     selfie_album_ids = [d.get("selfie"), d.get("litsenziya")]
     selfie_album_ids = [pid for pid in selfie_album_ids if pid]
 
-    for chat_id in DRIVER_GROUPS:
-        try:
-            if main_album_ids:
-                main_media = [
-                    InputMediaPhoto(
-                        media=fid,
-                        caption=caption_main if i == 0 else None,
-                        parse_mode="Markdown" if i == 0 else None,
-                    )
-                    for i, fid in enumerate(main_album_ids)
-                ]
-                await context.bot.send_media_group(chat_id=chat_id, media=main_media)
-            if selfie_album_ids:
-                selfie_media = [
-                    InputMediaPhoto(
-                        media=fid,
-                        caption=caption_selfie if i == 0 else None,
-                    )
-                    for i, fid in enumerate(selfie_album_ids)
-                ]
-                await context.bot.send_media_group(chat_id=chat_id, media=selfie_media)
-        except Exception as e:
-            print(f"[driver] failed to send to {chat_id}: {e}")
+    try:
+        if main_album_ids:
+            main_media = [
+                InputMediaPhoto(
+                    media=fid,
+                    caption=caption_main if i == 0 else None,
+                    parse_mode="Markdown" if i == 0 else None,
+                )
+                for i, fid in enumerate(main_album_ids)
+            ]
+            await context.bot.send_media_group(chat_id=chat_id, media=main_media)
+        if selfie_album_ids:
+            selfie_media = [
+                InputMediaPhoto(
+                    media=fid,
+                    caption=caption_selfie if i == 0 else None,
+                )
+                for i, fid in enumerate(selfie_album_ids)
+            ]
+            await context.bot.send_media_group(chat_id=chat_id, media=selfie_media)
+    except Exception as e:
+        print(f"[driver] failed to send to group #{idx + 1} ({chat_id}): {e}")
 
 
 def build_driver_conversation() -> ConversationHandler:
