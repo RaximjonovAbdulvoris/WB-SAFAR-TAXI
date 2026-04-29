@@ -5,6 +5,7 @@ from telegram.ext import Application, CommandHandler
 from bot.config import BOT_TOKEN
 from bot.handlers.brand import build_brand_conversation
 from bot.handlers.driver import build_driver_conversation
+from bot.handlers.operator import register_operator_handlers
 from bot.handlers.start import start
 
 logging.basicConfig(
@@ -21,6 +22,7 @@ def main() -> None:
     app.add_handler(CommandHandler("start", start))
     app.add_handler(build_driver_conversation())
     app.add_handler(build_brand_conversation())
+    register_operator_handlers(app)
 
     logger.info("🚖 WB TAXI HUMO bot ishga tushdi...")
     app.run_polling(allowed_updates=["message", "callback_query"])

@@ -1,3 +1,4 @@
+import logging
 from html import escape as h
 
 from telegram import (
@@ -18,7 +19,10 @@ from telegram.ext import (
 
 from bot.config import DRIVER_GROUPS, template_path
 from bot.counter import next_index
+from bot.handlers.operator import build_operator_keyboard
 from bot.handlers.start import MAIN_KEYBOARD, MENU_DRIVER, cancel
+
+logger = logging.getLogger(__name__)
 
 (
     NAME,
@@ -42,16 +46,42 @@ CONTINUE_KB = ReplyKeyboardMarkup(
 )
 
 
-async def _send_prompt(update: Update, text: str, template_name: str | None = None,
+async def _send_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                       text: str, template_name: str | None = None,
                        reply_markup=None):
-    """Send a prompt with an optional example image (sent first, then text)."""
-    path = template_path(template_name) if template_name else None
-    if path:
+    """Send prompt as a SINGLE message: template image with caption=text.
+
+    Caches the uploaded template's file_id in bot_data so subsequent users
+    don't re-upload from disk (much faster).
+    """
+    if not template_name:
+        await update.message.reply_text(
+            text, reply_markup=reply_markup, parse_mode="Markdown"
+        )
+        return
+
+    cache = context.bot_data.setdefault("template_file_ids", {})
+    file_id = cache.get(template_name)
+
+    if file_id:
+        sent = await update.message.reply_photo(
+            photo=file_id,
+            caption=text,
+            parse_mode="Markdown",
+            reply_markup=reply_markup,
+        )
+    else:
+        path = template_path(template_name)
         with open(path, "rb") as f:
-            await update.message.reply_photo(
-                photo=f, caption="📌 Namuna / Example"
+            sent = await update.message.reply_photo(
+                photo=f,
+                caption=text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup,
             )
-    await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+        # Cache file_id for future calls
+        if sent.photo:
+            cache[template_name] = sent.photo[-1].file_id
 
 
 # ---------- entry ----------
@@ -115,7 +145,7 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 # ---------- 3. warn ----------
 async def warn_docs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await _send_prompt(
-        update,
+        update, context,
         "📄 1/12 — *Passport (old tarafi)* rasmini jo'nating:",
         "passport_front",
         reply_markup=ReplyKeyboardRemove(),
@@ -132,7 +162,7 @@ async def _collect_photo(update: Update, context: ContextTypes.DEFAULT_TYPE,
         return context.user_data.get("_state", PASSPORT_FRONT)
     file_id = update.message.photo[-1].file_id
     context.user_data[field] = file_id
-    await _send_prompt(update, next_text, next_template)
+    await _send_prompt(update, context, next_text, next_template)
     context.user_data["_state"] = next_state
     return next_state
 
@@ -208,7 +238,7 @@ async def get_litsenziya(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     context.user_data["litsenziya"] = update.message.photo[-1].file_id
     context.user_data["car_photos"] = []
     await _send_prompt(
-        update,
+        update, context,
         "🚗 9-12/12 — Mashinangizning *4 ta tarafidan* rasmga olib jo'nating "
         "(old, orqa, chap, o'ng).\n\n"
         "Hammasini birin-ketin (4 ta rasm) jo'natishingiz kerak.",
@@ -270,8 +300,7 @@ async def get_car_plate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
 
 async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
-    """Send the application to ONE driver group, rotating through them
-    in order: 1st app → group 1, 2nd → group 2, ... 5th → group 1 again."""
+    """Send the application to ONE driver group, rotating through them."""
     d = context.user_data
     idx = next_index("driver_group_rr", len(DRIVER_GROUPS))
     chat_id = DRIVER_GROUPS[idx]
@@ -291,7 +320,7 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
         f"📞 Tel: {h(d.get('phone', '-'))}\n"
         f"🚗 Mashina raqami: {h(d.get('car_plate', '-'))}"
     )
-    caption_selfie = f"🤳 {h(d.get('name', '-'))} — litsenziya va selfie"
+    caption_selfie = f"🤳 {h(d.get('name', '-'))} — selfie va litsenziya"
 
     main_album_ids = [
         d.get("passport_front"),
@@ -327,8 +356,22 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
                 for i, fid in enumerate(selfie_album_ids)
             ]
             await context.bot.send_media_group(chat_id=chat_id, media=selfie_media)
+
+        # Action buttons under the application
+        if user_id:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    "👇 Ariza bo'yicha amal tanlang:\n"
+                    f"👤 Arizachi: {user_link_html}"
+                ),
+                parse_mode=ParseMode.HTML,
+                reply_markup=build_operator_keyboard(user_id),
+            )
+        logger.info("[driver] sent application to group #%s (%s)", idx + 1, chat_id)
     except Exception as e:
-        print(f"[driver] failed to send to group #{idx + 1} ({chat_id}): {e}")
+        logger.exception("[driver] failed to send to group #%s (%s): %s",
+                         idx + 1, chat_id, e)
 
 
 def build_driver_conversation() -> ConversationHandler:
