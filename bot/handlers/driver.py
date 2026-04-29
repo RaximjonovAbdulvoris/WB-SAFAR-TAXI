@@ -52,7 +52,8 @@ async def _send_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE,
     """Send prompt as a SINGLE message: template image with caption=text.
 
     Caches the uploaded template's file_id in bot_data so subsequent users
-    don't re-upload from disk (much faster).
+    don't re-upload from disk (much faster). If photo send fails for any
+    reason, fall back to a plain text message so the flow never gets stuck.
     """
     if not template_name:
         await update.message.reply_text(
@@ -63,14 +64,16 @@ async def _send_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE,
     cache = context.bot_data.setdefault("template_file_ids", {})
     file_id = cache.get(template_name)
 
-    if file_id:
-        sent = await update.message.reply_photo(
-            photo=file_id,
-            caption=text,
-            parse_mode="Markdown",
-            reply_markup=reply_markup,
-        )
-    else:
+    try:
+        if file_id:
+            await update.message.reply_photo(
+                photo=file_id,
+                caption=text,
+                parse_mode="Markdown",
+                reply_markup=reply_markup,
+            )
+            return
+
         path = template_path(template_name)
         with open(path, "rb") as f:
             sent = await update.message.reply_photo(
@@ -79,9 +82,14 @@ async def _send_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE,
                 parse_mode="Markdown",
                 reply_markup=reply_markup,
             )
-        # Cache file_id for future calls
-        if sent.photo:
+        if sent and sent.photo:
             cache[template_name] = sent.photo[-1].file_id
+    except Exception as e:
+        logger.warning("template '%s' yuborilmadi: %s — matnli prompt jo'natilmoqda",
+                       template_name, e)
+        await update.message.reply_text(
+            text, reply_markup=reply_markup, parse_mode="Markdown"
+        )
 
 
 # ---------- entry ----------
