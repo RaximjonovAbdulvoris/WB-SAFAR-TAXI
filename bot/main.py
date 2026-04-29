@@ -8,6 +8,7 @@ from bot.handlers.brand import build_brand_conversation
 from bot.handlers.driver import build_driver_conversation
 from bot.handlers.operator import register_operator_handlers
 from bot.handlers.start import start
+from bot.warmup import warmup_templates
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -37,6 +38,7 @@ def main() -> None:
         .token(BOT_TOKEN)
         .request(request)
         .get_updates_request(get_updates_request)
+        .post_init(warmup_templates)
         .build()
     )
 
