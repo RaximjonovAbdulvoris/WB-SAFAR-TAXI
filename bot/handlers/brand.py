@@ -1,3 +1,4 @@
+import logging
 from html import escape as h
 
 from telegram import (
@@ -17,6 +18,8 @@ from telegram.ext import (
 
 from bot.config import BRAND_GROUP
 from bot.handlers.start import MAIN_KEYBOARD, MENU_BRAND, cancel
+
+logger = logging.getLogger(__name__)
 
 (
     BRAND_WARN,
@@ -45,12 +48,11 @@ WARN_TEXT = (
 )
 
 
+# -------------------- entry --------------------
 async def start_brand(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
     await update.message.reply_text(
-        WARN_TEXT,
-        parse_mode="Markdown",
-        reply_markup=CONTINUE_KB,
+        WARN_TEXT, parse_mode="Markdown", reply_markup=CONTINUE_KB,
     )
     return BRAND_WARN
 
@@ -65,6 +67,16 @@ async def brand_warn(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return BRAND_NAME
 
 
+async def brand_warn_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        f"❗ Iltimos, *{CONTINUE_BTN}* knopkasini bosing:",
+        parse_mode="Markdown",
+        reply_markup=CONTINUE_KB,
+    )
+    return BRAND_WARN
+
+
+# -------------------- name --------------------
 async def brand_get_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     name = (update.message.text or "").strip()
     if len(name) < 3:
@@ -77,20 +89,31 @@ async def brand_get_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         one_time_keyboard=True,
     )
     await update.message.reply_text(
-        "📞 Telefon raqamingizni jo'nating:",
-        reply_markup=kb,
+        "📞 Telefon raqamingizni jo'nating:", reply_markup=kb,
     )
     return BRAND_PHONE
 
 
+async def brand_name_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "❗ Iltimos, *matn ko'rinishida* ism familiyangizni yozing:",
+        parse_mode="Markdown",
+    )
+    return BRAND_NAME
+
+
+# -------------------- phone --------------------
 async def brand_get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     phone = None
     if update.message.contact:
         phone = update.message.contact.phone_number
     elif update.message.text:
         phone = update.message.text.strip()
-    if not phone or len(phone) < 7:
-        await update.message.reply_text("❗ Iltimos, telefon raqamingizni jo'nating:")
+    if not phone or len(phone) < 7 or not any(c.isdigit() for c in phone):
+        await update.message.reply_text(
+            "❗ Iltimos, telefon raqamingizni knopka orqali jo'nating "
+            "yoki to'g'ri raqam kiriting (masalan: +998901234567):"
+        )
         return BRAND_PHONE
     context.user_data["b_phone"] = phone
     await update.message.reply_text(
@@ -101,6 +124,15 @@ async def brand_get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return BRAND_MODEL
 
 
+async def brand_phone_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "❗ Iltimos, *📞 Raqamni jo'natish* knopkasini bosing yoki raqamingizni yozing:",
+        parse_mode="Markdown",
+    )
+    return BRAND_PHONE
+
+
+# -------------------- model --------------------
 async def brand_get_model(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     model = (update.message.text or "").strip()
     if len(model) < 2:
@@ -114,6 +146,15 @@ async def brand_get_model(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return BRAND_YEAR
 
 
+async def brand_model_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "❗ Iltimos, mashina rusumini *matn ko'rinishida* yozing:",
+        parse_mode="Markdown",
+    )
+    return BRAND_MODEL
+
+
+# -------------------- year --------------------
 async def brand_get_year(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     year_text = (update.message.text or "").strip()
     if not year_text.isdigit() or not (1990 <= int(year_text) <= 2030):
@@ -127,6 +168,15 @@ async def brand_get_year(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     return BRAND_COLOR
 
 
+async def brand_year_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "❗ Iltimos, *yil raqamini* matn ko'rinishida yozing (masalan: 2018):",
+        parse_mode="Markdown",
+    )
+    return BRAND_YEAR
+
+
+# -------------------- color --------------------
 async def brand_get_color(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     color = (update.message.text or "").strip()
     if len(color) < 2:
@@ -140,10 +190,22 @@ async def brand_get_color(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return BRAND_PLATE
 
 
+async def brand_color_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "❗ Iltimos, mashina rangini *matn ko'rinishida* yozing:",
+        parse_mode="Markdown",
+    )
+    return BRAND_COLOR
+
+
+# -------------------- plate --------------------
 async def brand_get_plate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     plate = (update.message.text or "").strip().upper()
-    if len(plate) < 5:
-        await update.message.reply_text("❗ Iltimos, to'g'ri davlat raqamini kiriting:")
+    if len(plate) < 5 or not any(c.isalnum() for c in plate):
+        await update.message.reply_text(
+            "❗ Iltimos, to'g'ri davlat raqamini kiriting (masalan: `01A123BC`):",
+            parse_mode="Markdown",
+        )
         return BRAND_PLATE
     context.user_data["b_plate"] = plate
 
@@ -152,7 +214,15 @@ async def brand_get_plate(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     context.user_data["user_username"] = user.username or ""
     context.user_data["user_full_name"] = user.full_name or ""
 
-    await _send_brand_to_group(context)
+    try:
+        await _send_brand_to_group(context)
+    except Exception as e:
+        logger.exception("brand: send_brand_to_group failed: %s", e)
+        await update.message.reply_text(
+            "⚠️ Texnik xatolik yuz berdi. Iltimos, qaytadan /start bosib urinib ko'ring."
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
 
     await update.message.reply_text(
         "🎉 *Tabriklaymiz!*\n\n"
@@ -169,6 +239,15 @@ async def brand_get_plate(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     return ConversationHandler.END
 
 
+async def brand_plate_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "❗ Iltimos, davlat raqamini *matn ko'rinishida* yozing (masalan: `01A123BC`):",
+        parse_mode="Markdown",
+    )
+    return BRAND_PLATE
+
+
+# -------------------- group dispatch --------------------
 async def _send_brand_to_group(context: ContextTypes.DEFAULT_TYPE):
     d = context.user_data
 
@@ -190,14 +269,13 @@ async def _send_brand_to_group(context: ContextTypes.DEFAULT_TYPE):
         f"🎨 Rangi: {h(d.get('b_color', '-'))}\n"
         f"🔢 Davlat raqami: {h(d.get('b_plate', '-'))}"
     )
-    try:
-        await context.bot.send_message(
-            chat_id=BRAND_GROUP, text=text, parse_mode=ParseMode.HTML
-        )
-    except Exception as e:
-        print(f"[brand] failed to send to {BRAND_GROUP}: {e}")
+    await context.bot.send_message(
+        chat_id=BRAND_GROUP, text=text, parse_mode=ParseMode.HTML
+    )
+    logger.info("[brand] sent application to %s", BRAND_GROUP)
 
 
+# -------------------- conversation builder --------------------
 def build_brand_conversation() -> ConversationHandler:
     return ConversationHandler(
         entry_points=[
@@ -206,17 +284,33 @@ def build_brand_conversation() -> ConversationHandler:
         states={
             BRAND_WARN: [
                 MessageHandler(filters.Regex(f"^{CONTINUE_BTN}$"), brand_warn),
+                MessageHandler(~filters.COMMAND, brand_warn_wrong),
             ],
-            BRAND_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_name)],
+            BRAND_NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_name),
+                MessageHandler(~filters.COMMAND, brand_name_wrong),
+            ],
             BRAND_PHONE: [
-                MessageHandler(
-                    filters.CONTACT | (filters.TEXT & ~filters.COMMAND), brand_get_phone
-                )
+                MessageHandler(filters.CONTACT, brand_get_phone),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_phone),
+                MessageHandler(~filters.COMMAND, brand_phone_wrong),
             ],
-            BRAND_MODEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_model)],
-            BRAND_YEAR: [MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_year)],
-            BRAND_COLOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_color)],
-            BRAND_PLATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_plate)],
+            BRAND_MODEL: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_model),
+                MessageHandler(~filters.COMMAND, brand_model_wrong),
+            ],
+            BRAND_YEAR: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_year),
+                MessageHandler(~filters.COMMAND, brand_year_wrong),
+            ],
+            BRAND_COLOR: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_color),
+                MessageHandler(~filters.COMMAND, brand_color_wrong),
+            ],
+            BRAND_PLATE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, brand_get_plate),
+                MessageHandler(~filters.COMMAND, brand_plate_wrong),
+            ],
         },
         fallbacks=[CommandHandler("cancel", cancel), CommandHandler("start", cancel)],
         allow_reentry=True,

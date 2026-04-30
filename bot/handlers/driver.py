@@ -46,15 +46,12 @@ CONTINUE_KB = ReplyKeyboardMarkup(
 )
 
 
+# -------------------- prompt sender --------------------
 async def _send_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE,
                        text: str, template_name: str | None = None,
                        reply_markup=None):
-    """Send prompt as a SINGLE message: template image with caption=text.
-
-    Caches the uploaded template's file_id in bot_data so subsequent users
-    don't re-upload from disk (much faster). If photo send fails for any
-    reason, fall back to a plain text message so the flow never gets stuck.
-    """
+    """Send a prompt, attaching the cached template image if available.
+    Falls back to text-only on any error so the flow never gets stuck."""
     if not template_name:
         await update.message.reply_text(
             text, reply_markup=reply_markup, parse_mode="Markdown"
@@ -67,32 +64,33 @@ async def _send_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE,
     try:
         if file_id:
             await update.message.reply_photo(
-                photo=file_id,
-                caption=text,
-                parse_mode="Markdown",
-                reply_markup=reply_markup,
+                photo=file_id, caption=text,
+                parse_mode="Markdown", reply_markup=reply_markup,
             )
             return
 
         path = template_path(template_name)
+        if not path:
+            await update.message.reply_text(
+                text, reply_markup=reply_markup, parse_mode="Markdown"
+            )
+            return
+
         with open(path, "rb") as f:
             sent = await update.message.reply_photo(
-                photo=f,
-                caption=text,
-                parse_mode="Markdown",
-                reply_markup=reply_markup,
+                photo=f, caption=text,
+                parse_mode="Markdown", reply_markup=reply_markup,
             )
         if sent and sent.photo:
             cache[template_name] = sent.photo[-1].file_id
     except Exception as e:
-        logger.warning("template '%s' yuborilmadi: %s — matnli prompt jo'natilmoqda",
-                       template_name, e)
+        logger.warning("template '%s' yuborilmadi: %s", template_name, e)
         await update.message.reply_text(
             text, reply_markup=reply_markup, parse_mode="Markdown"
         )
 
 
-# ---------- entry ----------
+# -------------------- entry --------------------
 async def start_driver(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     context.user_data.clear()
     await update.message.reply_text(
@@ -104,7 +102,7 @@ async def start_driver(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
     return NAME
 
 
-# ---------- 1. name ----------
+# -------------------- 1. name --------------------
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     name = (update.message.text or "").strip()
     if len(name) < 3:
@@ -125,16 +123,25 @@ async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return PHONE
 
 
-# ---------- 2. phone ----------
+async def name_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "❗ Iltimos, *matn* ko'rinishida ism va familiyangizni yozing:",
+        parse_mode="Markdown",
+    )
+    return NAME
+
+
+# -------------------- 2. phone --------------------
 async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     phone = None
     if update.message.contact:
         phone = update.message.contact.phone_number
     elif update.message.text:
         phone = update.message.text.strip()
-    if not phone or len(phone) < 7:
+    if not phone or len(phone) < 7 or not any(c.isdigit() for c in phone):
         await update.message.reply_text(
-            "❗ Iltimos, telefon raqamingizni jo'nating (knopkani bosing):"
+            "❗ Iltimos, telefon raqamingizni knopka orqali jo'nating "
+            "yoki to'g'ri raqam kiriting (masalan: +998901234567):"
         )
         return PHONE
     context.user_data["phone"] = phone
@@ -150,7 +157,15 @@ async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return WARN_DOCS
 
 
-# ---------- 3. warn ----------
+async def phone_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "❗ Iltimos, *📞 Raqamni jo'natish* knopkasini bosing yoki raqamingizni yozing:",
+        parse_mode="Markdown",
+    )
+    return PHONE
+
+
+# -------------------- 3. warn --------------------
 async def warn_docs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await _send_prompt(
         update, context,
@@ -161,88 +176,79 @@ async def warn_docs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     return PASSPORT_FRONT
 
 
-# ---------- helper for photo collecting ----------
-async def _collect_photo(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                          field: str, next_text: str, next_template: str | None,
-                          next_state: int) -> int:
-    if not update.message.photo:
-        await update.message.reply_text("❗ Iltimos, *rasm tashlang*!", parse_mode="Markdown")
-        return context.user_data.get("_state", PASSPORT_FRONT)
-    file_id = update.message.photo[-1].file_id
-    context.user_data[field] = file_id
-    await _send_prompt(update, context, next_text, next_template)
-    context.user_data["_state"] = next_state
-    return next_state
-
-
-# ---------- 4. passport front ----------
-async def get_passport_front(update, context):
-    return await _collect_photo(
-        update, context, "passport_front",
-        "📄 2/12 — *Passport (orqa tarafi)* rasmini jo'nating:",
-        "passport_back", PASSPORT_BACK,
+async def warn_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        f"❗ Iltimos, *{CONTINUE_BTN}* knopkasini bosing:",
+        parse_mode="Markdown",
+        reply_markup=CONTINUE_KB,
     )
+    return WARN_DOCS
 
 
-# ---------- 5. passport back ----------
-async def get_passport_back(update, context):
-    return await _collect_photo(
-        update, context, "passport_back",
-        "🪪 3/12 — *Haydovchilik guvohnomasi (old tarafi)* rasmini jo'nating:",
-        "license_front", LICENSE_FRONT,
-    )
+# -------------------- photo step factory --------------------
+def _make_photo_step(field: str, next_text: str,
+                     next_template: str | None, current_state: int,
+                     next_state: int):
+    """Create (handler, wrong-input handler) for a single-photo step."""
+
+    async def get(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        if not update.message.photo:
+            return await wrong(update, context)
+        context.user_data[field] = update.message.photo[-1].file_id
+        await _send_prompt(update, context, next_text, next_template)
+        return next_state
+
+    async def wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+        await update.message.reply_text(
+            "❗ Iltimos, *rasm jo'nating*! Matn yoki boshqa tur qabul qilinmaydi.",
+            parse_mode="Markdown",
+        )
+        return current_state
+
+    return get, wrong
 
 
-# ---------- 6. license front ----------
-async def get_license_front(update, context):
-    return await _collect_photo(
-        update, context, "license_front",
-        "🪪 4/12 — *Haydovchilik guvohnomasi (orqa tarafi)* rasmini jo'nating:",
-        "license_back", LICENSE_BACK,
-    )
+get_passport_front, _wrong_pf = _make_photo_step(
+    "passport_front",
+    "📄 2/12 — *Passport (orqa tarafi)* rasmini jo'nating:",
+    "passport_back", PASSPORT_FRONT, PASSPORT_BACK,
+)
+get_passport_back, _wrong_pb = _make_photo_step(
+    "passport_back",
+    "🪪 3/12 — *Haydovchilik guvohnomasi (old tarafi)* rasmini jo'nating:",
+    "license_front", PASSPORT_BACK, LICENSE_FRONT,
+)
+get_license_front, _wrong_lf = _make_photo_step(
+    "license_front",
+    "🪪 4/12 — *Haydovchilik guvohnomasi (orqa tarafi)* rasmini jo'nating:",
+    "license_back", LICENSE_FRONT, LICENSE_BACK,
+)
+get_license_back, _wrong_lb = _make_photo_step(
+    "license_back",
+    "🚘 5/12 — *Texnik passport (old tarafi)* rasmini jo'nating:",
+    "tech_front", LICENSE_BACK, TECH_FRONT,
+)
+get_tech_front, _wrong_tf = _make_photo_step(
+    "tech_front",
+    "🚘 6/12 — *Texnik passport (orqa tarafi)* rasmini jo'nating:",
+    "tech_back", TECH_FRONT, TECH_BACK,
+)
+get_tech_back, _wrong_tb = _make_photo_step(
+    "tech_back",
+    "🤳 7/12 — *Selfie* rasmingizni jo'nating:",
+    "selfie", TECH_BACK, SELFIE,
+)
+get_selfie, _wrong_se = _make_photo_step(
+    "selfie",
+    "📜 8/12 — *Litsenziya* rasmini jo'nating:",
+    "litsenziya", SELFIE, LITSENZIYA,
+)
 
 
-# ---------- 7. license back ----------
-async def get_license_back(update, context):
-    return await _collect_photo(
-        update, context, "license_back",
-        "🚘 5/12 — *Texnik passport (old tarafi)* rasmini jo'nating:",
-        "tech_front", TECH_FRONT,
-    )
-
-
-# ---------- 8. tech front ----------
-async def get_tech_front(update, context):
-    return await _collect_photo(
-        update, context, "tech_front",
-        "🚘 6/12 — *Texnik passport (orqa tarafi)* rasmini jo'nating:",
-        "tech_back", TECH_BACK,
-    )
-
-
-# ---------- 9. tech back ----------
-async def get_tech_back(update, context):
-    return await _collect_photo(
-        update, context, "tech_back",
-        "🤳 7/12 — *Selfie* rasmingizni jo'nating:",
-        "selfie", SELFIE,
-    )
-
-
-# ---------- 10. selfie ----------
-async def get_selfie(update, context):
-    return await _collect_photo(
-        update, context, "selfie",
-        "📜 8/12 — *Litsenziya* rasmini jo'nating:",
-        "litsenziya", LITSENZIYA,
-    )
-
-
-# ---------- 11. litsenziya -> ask car photos ----------
+# -------------------- 11. litsenziya -> ask car photos --------------------
 async def get_litsenziya(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     if not update.message.photo:
-        await update.message.reply_text("❗ Iltimos, *rasm tashlang*!", parse_mode="Markdown")
-        return LITSENZIYA
+        return await litsenziya_wrong(update, context)
     context.user_data["litsenziya"] = update.message.photo[-1].file_id
     context.user_data["car_photos"] = []
     await _send_prompt(
@@ -255,12 +261,21 @@ async def get_litsenziya(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     return CAR_PHOTOS
 
 
-# ---------- 12. car photos (4) ----------
+async def litsenziya_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "❗ Iltimos, *litsenziya rasmini* jo'nating!",
+        parse_mode="Markdown",
+    )
+    return LITSENZIYA
+
+
+# -------------------- 12. car photos (4) --------------------
 async def get_car_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     photos = context.user_data.setdefault("car_photos", [])
     if not update.message.photo:
         await update.message.reply_text(
-            f"❗ *4 ta rasm yukleng*! Hozir {len(photos)}/4 ta yuborildi.",
+            f"❗ *Mashina rasmlari kerak*! Hozir {len(photos)}/4 ta yuborildi. "
+            f"Iltimos, rasm jo'nating.",
             parse_mode="Markdown",
         )
         return CAR_PHOTOS
@@ -281,11 +296,23 @@ async def get_car_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     return CAR_PLATE
 
 
-# ---------- 13. car plate -> finish ----------
+async def car_photos_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    photos = context.user_data.get("car_photos", [])
+    await update.message.reply_text(
+        f"❗ Iltimos, *mashina rasmini* jo'nating! ({len(photos)}/4 yuborildi)",
+        parse_mode="Markdown",
+    )
+    return CAR_PHOTOS
+
+
+# -------------------- 13. car plate -> finish --------------------
 async def get_car_plate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     plate = (update.message.text or "").strip().upper()
-    if len(plate) < 5:
-        await update.message.reply_text("❗ Iltimos, to'g'ri davlat raqami kiriting:")
+    if len(plate) < 5 or not any(c.isalnum() for c in plate):
+        await update.message.reply_text(
+            "❗ Iltimos, to'g'ri davlat raqami kiriting (masalan: `01A123BC`):",
+            parse_mode="Markdown",
+        )
         return CAR_PLATE
     context.user_data["car_plate"] = plate
 
@@ -294,7 +321,15 @@ async def get_car_plate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     context.user_data["user_username"] = user.username or ""
     context.user_data["user_full_name"] = user.full_name or ""
 
-    await _send_to_driver_group(context)
+    try:
+        await _send_to_driver_group(context)
+    except Exception as e:
+        logger.exception("driver: send_to_driver_group failed: %s", e)
+        await update.message.reply_text(
+            "⚠️ Texnik xatolik yuz berdi. Iltimos, qaytadan /start bosib urinib ko'ring."
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
 
     await update.message.reply_text(
         "🎉 *Tabriklaymiz!*\n\n"
@@ -311,6 +346,15 @@ async def get_car_plate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     return ConversationHandler.END
 
 
+async def car_plate_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "❗ Iltimos, davlat raqamini *matn ko'rinishida* yozing (masalan: `01A123BC`):",
+        parse_mode="Markdown",
+    )
+    return CAR_PLATE
+
+
+# -------------------- group dispatch --------------------
 async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
     """Send the application to ONE driver group, rotating through them."""
     d = context.user_data
@@ -347,43 +391,47 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
     selfie_album_ids = [d.get("selfie"), d.get("litsenziya")]
     selfie_album_ids = [pid for pid in selfie_album_ids if pid]
 
-    try:
-        if main_album_ids:
-            main_media = [
-                InputMediaPhoto(
-                    media=fid,
-                    caption=caption_main if i == 0 else None,
-                    parse_mode=ParseMode.HTML if i == 0 else None,
-                )
-                for i, fid in enumerate(main_album_ids)
-            ]
-            await context.bot.send_media_group(chat_id=chat_id, media=main_media)
-        if selfie_album_ids:
-            selfie_media = [
-                InputMediaPhoto(
-                    media=fid,
-                    caption=caption_selfie if i == 0 else None,
-                    parse_mode=ParseMode.HTML if i == 0 else None,
-                )
-                for i, fid in enumerate(selfie_album_ids)
-            ]
-            await context.bot.send_media_group(chat_id=chat_id, media=selfie_media)
-
-        # Action buttons under the application
-        if user_id:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=(
-                    "👇 Ariza bo'yicha amal tanlang:\n"
-                    f"👤 Arizachi: {user_link_html}"
-                ),
-                parse_mode=ParseMode.HTML,
-                reply_markup=build_operator_keyboard(user_id),
+    if main_album_ids:
+        main_media = [
+            InputMediaPhoto(
+                media=fid,
+                caption=caption_main if i == 0 else None,
+                parse_mode=ParseMode.HTML if i == 0 else None,
             )
-        logger.info("[driver] sent application to group #%s (%s)", idx + 1, chat_id)
-    except Exception as e:
-        logger.exception("[driver] failed to send to group #%s (%s): %s",
-                         idx + 1, chat_id, e)
+            for i, fid in enumerate(main_album_ids)
+        ]
+        await context.bot.send_media_group(chat_id=chat_id, media=main_media)
+    if selfie_album_ids:
+        selfie_media = [
+            InputMediaPhoto(
+                media=fid,
+                caption=caption_selfie if i == 0 else None,
+                parse_mode=ParseMode.HTML if i == 0 else None,
+            )
+            for i, fid in enumerate(selfie_album_ids)
+        ]
+        await context.bot.send_media_group(chat_id=chat_id, media=selfie_media)
+
+    if user_id:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=(
+                "👇 Ariza bo'yicha amal tanlang:\n"
+                f"👤 Arizachi: {user_link_html}"
+            ),
+            parse_mode=ParseMode.HTML,
+            reply_markup=build_operator_keyboard(user_id),
+        )
+    logger.info("[driver] sent application to group #%s (%s)", idx + 1, chat_id)
+
+
+# -------------------- conversation builder --------------------
+def _photo_state(get_handler, wrong_handler):
+    """Photo states accept ONLY photos; everything else triggers wrong handler."""
+    return [
+        MessageHandler(filters.PHOTO, get_handler),
+        MessageHandler(~filters.COMMAND, wrong_handler),
+    ]
 
 
 def build_driver_conversation() -> ConversationHandler:
@@ -392,25 +440,32 @@ def build_driver_conversation() -> ConversationHandler:
             MessageHandler(filters.Regex(f"^{MENU_DRIVER}$"), start_driver),
         ],
         states={
-            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
+            NAME: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_name),
+                MessageHandler(~filters.COMMAND, name_wrong),
+            ],
             PHONE: [
-                MessageHandler(filters.CONTACT | (filters.TEXT & ~filters.COMMAND),
-                               get_phone)
+                MessageHandler(filters.CONTACT, get_phone),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone),
+                MessageHandler(~filters.COMMAND, phone_wrong),
             ],
             WARN_DOCS: [
                 MessageHandler(filters.Regex(f"^{CONTINUE_BTN}$"), warn_docs),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, warn_docs),
+                MessageHandler(~filters.COMMAND, warn_wrong),
             ],
-            PASSPORT_FRONT: [MessageHandler(filters.ALL & ~filters.COMMAND, get_passport_front)],
-            PASSPORT_BACK: [MessageHandler(filters.ALL & ~filters.COMMAND, get_passport_back)],
-            LICENSE_FRONT: [MessageHandler(filters.ALL & ~filters.COMMAND, get_license_front)],
-            LICENSE_BACK: [MessageHandler(filters.ALL & ~filters.COMMAND, get_license_back)],
-            TECH_FRONT: [MessageHandler(filters.ALL & ~filters.COMMAND, get_tech_front)],
-            TECH_BACK: [MessageHandler(filters.ALL & ~filters.COMMAND, get_tech_back)],
-            SELFIE: [MessageHandler(filters.ALL & ~filters.COMMAND, get_selfie)],
-            LITSENZIYA: [MessageHandler(filters.ALL & ~filters.COMMAND, get_litsenziya)],
-            CAR_PHOTOS: [MessageHandler(filters.ALL & ~filters.COMMAND, get_car_photos)],
-            CAR_PLATE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_car_plate)],
+            PASSPORT_FRONT: _photo_state(get_passport_front, _wrong_pf),
+            PASSPORT_BACK: _photo_state(get_passport_back, _wrong_pb),
+            LICENSE_FRONT: _photo_state(get_license_front, _wrong_lf),
+            LICENSE_BACK: _photo_state(get_license_back, _wrong_lb),
+            TECH_FRONT: _photo_state(get_tech_front, _wrong_tf),
+            TECH_BACK: _photo_state(get_tech_back, _wrong_tb),
+            SELFIE: _photo_state(get_selfie, _wrong_se),
+            LITSENZIYA: _photo_state(get_litsenziya, litsenziya_wrong),
+            CAR_PHOTOS: _photo_state(get_car_photos, car_photos_wrong),
+            CAR_PLATE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, get_car_plate),
+                MessageHandler(~filters.COMMAND, car_plate_wrong),
+            ],
         },
         fallbacks=[CommandHandler("cancel", cancel), CommandHandler("start", cancel)],
         allow_reentry=True,

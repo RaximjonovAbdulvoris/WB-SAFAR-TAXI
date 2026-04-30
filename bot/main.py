@@ -1,6 +1,7 @@
 import logging
 
-from telegram.ext import Application, CommandHandler
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.request import HTTPXRequest
 
 from bot.config import BOT_TOKEN
@@ -16,6 +17,22 @@ logging.basicConfig(
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
+
+
+async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Global error handler: logs the exception and notifies the user politely."""
+    logger.exception("Unhandled error: %s", context.error)
+    try:
+        if isinstance(update, Update) and update.effective_chat:
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=(
+                    "⚠️ Texnik xatolik yuz berdi. Iltimos, qaytadan urinib ko'ring "
+                    "yoki /start bosing."
+                ),
+            )
+    except Exception:
+        pass
 
 
 def main() -> None:
@@ -46,6 +63,7 @@ def main() -> None:
     app.add_handler(build_driver_conversation())
     app.add_handler(build_brand_conversation())
     register_operator_handlers(app)
+    app.add_error_handler(on_error)
 
     logger.info("🚖 WB TAXI HUMO bot ishga tushdi...")
     app.run_polling(allowed_updates=["message", "callback_query"])
