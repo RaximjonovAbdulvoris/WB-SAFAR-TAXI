@@ -1,6 +1,7 @@
 import logging
 
 from telegram import Update
+from telegram.error import Conflict, NetworkError, TimedOut
 from telegram.ext import Application, CommandHandler, ContextTypes
 from telegram.request import HTTPXRequest
 
@@ -20,8 +21,27 @@ logger = logging.getLogger(__name__)
 
 
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Global error handler: logs the exception and notifies the user politely."""
-    logger.exception("Unhandled error: %s", context.error)
+    """Global error handler.
+
+    - Conflict (another bot instance polling): warn once, do not spam tracebacks.
+    - Network/Timeout: warn briefly, the polling loop will recover automatically.
+    - Other errors: full traceback + a friendly message to the user if possible.
+    """
+    err = context.error
+
+    if isinstance(err, Conflict):
+        logger.warning(
+            "Conflict: another instance is polling with the same bot token. "
+            "Check Render: stop duplicate services or wait for the old container "
+            "to drain."
+        )
+        return
+
+    if isinstance(err, (NetworkError, TimedOut)):
+        logger.warning("Network/Timeout while polling: %s", err)
+        return
+
+    logger.error("Unhandled error: %s", err, exc_info=err)
     try:
         if isinstance(update, Update) and update.effective_chat:
             await context.bot.send_message(
