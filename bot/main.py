@@ -55,6 +55,7 @@ def main() -> None:
         .token(BOT_TOKEN)
         .request(request)
         .get_updates_request(get_updates_request)
+        .concurrent_updates(True)
         .post_init(warmup_templates)
         .build()
     )
