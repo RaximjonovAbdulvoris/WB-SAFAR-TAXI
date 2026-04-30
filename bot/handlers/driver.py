@@ -271,7 +271,16 @@ async def litsenziya_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 # -------------------- 12. car photos (4) --------------------
 async def get_car_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Accept car photos either one-by-one OR as a single album (media group).
+
+    Behaviour:
+    - For album messages, only the FIRST photo of the group triggers a progress
+      reply; the rest are absorbed silently to avoid spamming "1/4", "2/4"...
+    - When the 4th photo arrives (whatever the source), advance to CAR_PLATE.
+    - Extra photos beyond 4 are simply dropped (state has already advanced).
+    """
     photos = context.user_data.setdefault("car_photos", [])
+
     if not update.message.photo:
         await update.message.reply_text(
             f"❗ *Mashina rasmlari kerak*! Hozir {len(photos)}/4 ta yuborildi. "
@@ -280,20 +289,34 @@ async def get_car_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         )
         return CAR_PHOTOS
 
+    if len(photos) >= 4:
+        return CAR_PLATE
+
     photos.append(update.message.photo[-1].file_id)
 
-    if len(photos) < 4:
+    if len(photos) >= 4:
+        context.user_data.pop("car_photo_replied_groups", None)
         await update.message.reply_text(
-            f"✅ {len(photos)}/4 ta rasm qabul qilindi. "
-            f"Yana {4 - len(photos)} ta rasm jo'nating."
+            "✅ Hamma rasmlar qabul qilindi.\n\n"
+            "🔢 Endi mashinangizning *davlat raqamini* yozing (masalan: `01A123BC`):",
+            parse_mode="Markdown",
         )
-        return CAR_PHOTOS
+        return CAR_PLATE
+
+    media_group_id = update.message.media_group_id
+    if media_group_id:
+        replied_groups = context.user_data.setdefault(
+            "car_photo_replied_groups", set()
+        )
+        if media_group_id in replied_groups:
+            return CAR_PHOTOS
+        replied_groups.add(media_group_id)
 
     await update.message.reply_text(
-        "🔢 Endi mashinangizning *davlat raqamini* yozing (masalan: `01A123BC`):",
-        parse_mode="Markdown",
+        f"✅ {len(photos)}/4 ta rasm qabul qilindi. "
+        f"Yana {4 - len(photos)} ta rasm jo'nating."
     )
-    return CAR_PLATE
+    return CAR_PHOTOS
 
 
 async def car_photos_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
