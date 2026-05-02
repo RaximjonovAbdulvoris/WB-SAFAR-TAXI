@@ -271,50 +271,51 @@ async def litsenziya_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 # -------------------- 12. car photos (4) --------------------
 async def get_car_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    """Accept car photos either one-by-one OR as a single album (media group).
+    """Accept car photos one-by-one OR as a media group (album).
 
-    Behaviour:
-    - For album messages, only the FIRST photo of the group triggers a progress
-      reply; the rest are absorbed silently to avoid spamming "1/4", "2/4"...
-    - When the 4th photo arrives (whatever the source), advance to CAR_PLATE.
-    - Extra photos beyond 4 are simply dropped (state has already advanced).
+    Rules:
+    - Photos in an album arrive as separate updates with the same media_group_id.
+    - Album photos: collect silently, send ONE message only when total reaches 4.
+    - Individual photos: send a progress message after each one.
+    - If user already sent 4+, ignore extras and stay on CAR_PLATE quietly.
     """
     photos = context.user_data.setdefault("car_photos", [])
 
     if not update.message.photo:
         await update.message.reply_text(
             f"❗ *Mashina rasmlari kerak*! Hozir {len(photos)}/4 ta yuborildi. "
-            f"Iltimos, rasm jo'nating.",
+            "Iltimos, *rasm* jo'nating.",
             parse_mode="Markdown",
         )
         return CAR_PHOTOS
 
+    # Already have 4 — ignore extra photos that may arrive late from a big album
     if len(photos) >= 4:
         return CAR_PLATE
 
     photos.append(update.message.photo[-1].file_id)
+    is_album = bool(update.message.media_group_id)
 
     if len(photos) >= 4:
+        # Done — clean up and ask for plate number
         context.user_data.pop("car_photo_replied_groups", None)
         await update.message.reply_text(
-            "✅ Hamma rasmlar qabul qilindi.\n\n"
+            "✅ *4 ta rasm qabul qilindi!*\n\n"
             "🔢 Endi mashinangizning *davlat raqamini* yozing (masalan: `01A123BC`):",
             parse_mode="Markdown",
         )
         return CAR_PLATE
 
-    media_group_id = update.message.media_group_id
-    if media_group_id:
-        replied_groups = context.user_data.setdefault(
-            "car_photo_replied_groups", set()
-        )
-        if media_group_id in replied_groups:
-            return CAR_PHOTOS
-        replied_groups.add(media_group_id)
+    if is_album:
+        # Part of an album but haven't reached 4 yet — stay silent.
+        # This avoids spamming "1/4", "2/4" when photos arrive milliseconds apart.
+        return CAR_PHOTOS
 
+    # Single photo, not an album — show progress so user knows how many more to send
     await update.message.reply_text(
         f"✅ {len(photos)}/4 ta rasm qabul qilindi. "
-        f"Yana {4 - len(photos)} ta rasm jo'nating."
+        f"Yana *{4 - len(photos)} ta* rasm jo'nating.",
+        parse_mode="Markdown",
     )
     return CAR_PHOTOS
 
