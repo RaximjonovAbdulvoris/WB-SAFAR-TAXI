@@ -437,6 +437,13 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
         await context.bot.send_media_group(chat_id=chat_id, media=selfie_media)
 
     if user_id:
+        # Cache applicant info so operator.py can build a proper mention link
+        applicant_cache = context.bot_data.setdefault("applicant_info", {})
+        applicant_cache[user_id] = {
+            "name": d.get("name") or full_name or "Arizachi",
+            "username": username,
+        }
+
         await context.bot.send_message(
             chat_id=chat_id,
             text=(

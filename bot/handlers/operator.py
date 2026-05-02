@@ -21,7 +21,7 @@ READY_TEXT = (
     "*Wildberries Taxi* uchun *HUMO Taxoparki* tomonidan "
     "ariza tashlab qo'ydik.\n\n"
     "📩 SMS xabarnoma *10–15 daqiqa* ichida keladi. "
-    "Iltimos, telefoningizni nazoratda ushlab turing!\n\n"
+    "Iltimos,Savollaringiz bo'lsa @wbhumoadmin ga murojat qilishingiz mumkin\n\n"
     "Rahmat 🤝"
 )
 
@@ -87,14 +87,23 @@ async def on_operator_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
         pending[(chat_id, op_id)] = applicant_id
 
+        # Build a clickable mention link for the applicant
+        info = context.bot_data.get("applicant_info", {}).get(applicant_id, {})
+        ap_name = info.get("name") or "Arizachi"
+        ap_username = info.get("username") or ""
+        if ap_username:
+            applicant_link = f'<a href="https://t.me/{ap_username}">{ap_name} (@{ap_username})</a>'
+        else:
+            applicant_link = f'<a href="tg://user?id={applicant_id}">{ap_name}</a>'
+
         prompt = await context.bot.send_message(
             chat_id=chat_id,
             text=(
-                f"💬 *Izoh kiriting* (arizachiga yuboriladi)\n"
+                f"💬 <b>Izoh kiriting</b> → {applicant_link}\n"
                 f"👤 Operator: {op_name}\n\n"
                 f"Bekor qilish uchun: /bekor"
             ),
-            parse_mode="Markdown",
+            parse_mode="HTML",
             reply_to_message_id=query.message.message_id if query.message else None,
         )
         # Remember which prompt we showed so we can clean up later
