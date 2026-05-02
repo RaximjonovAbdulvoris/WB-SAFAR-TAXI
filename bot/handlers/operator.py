@@ -51,10 +51,7 @@ async def on_operator_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if len(parts) != 3 or parts[0] != "op":
         return
     action, applicant_id_str = parts[1], parts[2]
-    try:
-        applicant_id = int(applicant_id_str)
-    except ValueError:
-        return
+    
 
     operator = update.effective_user
     op_name = operator.full_name if operator else "Operator"
@@ -87,23 +84,14 @@ async def on_operator_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
         pending[(chat_id, op_id)] = applicant_id
 
-        # Build a clickable mention link for the applicant
-        info = context.bot_data.get("applicant_info", {}).get(applicant_id, {})
-        ap_name = info.get("name") or "Arizachi"
-        ap_username = info.get("username") or ""
-        if ap_username:
-            applicant_link = f'<a href="https://t.me/{ap_username}">{ap_name} (@{ap_username})</a>'
-        else:
-            applicant_link = f'<a href="tg://user?id={applicant_id}">{ap_name}</a>'
-
         prompt = await context.bot.send_message(
             chat_id=chat_id,
             text=(
-                f"💬 <b>Izoh kiriting</b> → {applicant_link}\n"
+                f"💬 *Izoh kiriting* (arizachiga yuboriladi)\n"
                 f"👤 Operator: {op_name}\n\n"
                 f"Bekor qilish uchun: /bekor"
             ),
-            parse_mode="HTML",
+            parse_mode="Markdown",
             reply_to_message_id=query.message.message_id if query.message else None,
         )
         # Remember which prompt we showed so we can clean up later
