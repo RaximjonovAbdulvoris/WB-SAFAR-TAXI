@@ -231,6 +231,12 @@ async def on_user_reply_message(update: Update, context: ContextTypes.DEFAULT_TY
         else f'<a href="tg://user?id={user.id}">{h(user.full_name or "Foydalanuvchi")}</a>'
     )
 
+    # Keep applicant_info fresh so operator "Izoh berish" link stays correct
+    context.bot_data.setdefault("applicant_info", {})[user.id] = {
+        "name": user.full_name or "Arizachi",
+        "username": user.username or "",
+    }
+
     try:
         await context.bot.send_message(
             chat_id=group_chat_id,
@@ -240,6 +246,7 @@ async def on_user_reply_message(update: Update, context: ContextTypes.DEFAULT_TY
                 f"{h(text)}"
             ),
             parse_mode="HTML",
+            reply_markup=build_operator_keyboard(user.id),
         )
         await msg.reply_text("✅ Javobingiz operatorlarga yuborildi.")
     except Exception as e:
