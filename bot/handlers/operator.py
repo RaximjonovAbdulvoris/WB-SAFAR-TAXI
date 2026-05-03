@@ -5,6 +5,7 @@ Two-way relay chat:
   User presses button -> types reply -> forwarded back to operator group
   Operator can reply again via "Izoh berish" — cycle continues.
 """
+import asyncio
 import logging
 from html import escape as h
 
@@ -19,6 +20,8 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+
+from bot.config import ARCHIVE_GROUP
 
 logger = logging.getLogger(__name__)
 
@@ -74,23 +77,60 @@ async def on_operator_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
     op_name = operator.full_name if operator else "Operator"
 
     if action == "ready":
+        op_chat_id = update.effective_chat.id if update.effective_chat else None
+
+        # 1. Retrieve stored message IDs for this application
+        app_info = context.bot_data.get("app_messages", {}).get(applicant_id)
+
+        # 2. Copy messages to archive group (if configured)
+        if ARCHIVE_GROUP and app_info:
+            src_chat = app_info["group_chat_id"]
+            for msg_id in app_info["message_ids"]:
+                try:
+                    await context.bot.copy_message(
+                        chat_id=ARCHIVE_GROUP,
+                        from_chat_id=src_chat,
+                        message_id=msg_id,
+                    )
+                    await asyncio.sleep(0.05)
+                except Exception:
+                    logger.warning("archive: could not copy msg %s", msg_id)
+
+        # 3. Notify applicant
         try:
             await context.bot.send_message(
                 chat_id=applicant_id,
                 text=READY_TEXT,
                 parse_mode="Markdown",
             )
-            await query.edit_message_text(
-                f"✅ *Tayyor* — xabar arizachiga yuborildi.\n"
-                f"👤 Operator: {op_name}",
-                parse_mode="Markdown",
-            )
         except Exception as e:
-            logger.exception("ready: failed to notify applicant %s", applicant_id)
-            await query.edit_message_text(
-                f"⚠️ Xabar yuborilmadi: {e}\n\n"
-                f"Sabab: foydalanuvchi botni bloklagan yoki /start bosmagan."
-            )
+            logger.warning("ready: could not notify applicant %s: %s", applicant_id, e)
+
+        # 4. Delete all original messages from operator group
+        if app_info and op_chat_id:
+            src_chat = app_info["group_chat_id"]
+            for msg_id in app_info["message_ids"]:
+                try:
+                    await context.bot.delete_message(
+                        chat_id=src_chat, message_id=msg_id
+                    )
+                except Exception:
+                    logger.warning("ready: could not delete msg %s", msg_id)
+            # Clean up stored data
+            context.bot_data.get("app_messages", {}).pop(applicant_id, None)
+
+        # 5. Also delete the keyboard message (the one that was clicked)
+        try:
+            await query.delete_message()
+        except Exception:
+            # Fallback: edit it to show status
+            try:
+                await query.edit_message_text(
+                    f"✅ *Tayyor* — ariza arxivlandi.\n👤 Operator: {op_name}",
+                    parse_mode="Markdown",
+                )
+            except Exception:
+                pass
 
     elif action == "comment":
         pending = context.bot_data.setdefault("pending_comments", {})

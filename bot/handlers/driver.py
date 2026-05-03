@@ -415,6 +415,8 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
     selfie_album_ids = [d.get("selfie"), d.get("litsenziya")]
     selfie_album_ids = [pid for pid in selfie_album_ids if pid]
 
+    sent_msg_ids: list[int] = []
+
     if main_album_ids:
         main_media = [
             InputMediaPhoto(
@@ -424,7 +426,9 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
             )
             for i, fid in enumerate(main_album_ids)
         ]
-        await context.bot.send_media_group(chat_id=chat_id, media=main_media)
+        main_sent = await context.bot.send_media_group(chat_id=chat_id, media=main_media)
+        sent_msg_ids.extend(m.message_id for m in main_sent)
+
     if selfie_album_ids:
         selfie_media = [
             InputMediaPhoto(
@@ -434,7 +438,8 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
             )
             for i, fid in enumerate(selfie_album_ids)
         ]
-        await context.bot.send_media_group(chat_id=chat_id, media=selfie_media)
+        selfie_sent = await context.bot.send_media_group(chat_id=chat_id, media=selfie_media)
+        sent_msg_ids.extend(m.message_id for m in selfie_sent)
 
     if user_id:
         # Cache applicant info so operator.py can build a proper mention link
@@ -444,7 +449,7 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
             "username": username,
         }
 
-        await context.bot.send_message(
+        kb_msg = await context.bot.send_message(
             chat_id=chat_id,
             text=(
                 "👇 Ariza bo'yicha amal tanlang:\n"
@@ -453,6 +458,14 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML,
             reply_markup=build_operator_keyboard(user_id),
         )
+        sent_msg_ids.append(kb_msg.message_id)
+
+        # Store all message IDs so "Tayyor" can delete them and copy to archive
+        context.bot_data.setdefault("app_messages", {})[user_id] = {
+            "group_chat_id": chat_id,
+            "message_ids": sent_msg_ids,
+        }
+
     logger.info("[driver] sent application to group #%s (%s)", idx + 1, chat_id)
 
 
