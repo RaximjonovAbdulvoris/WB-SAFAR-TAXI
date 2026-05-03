@@ -1,7 +1,7 @@
 from telegram import ReplyKeyboardMarkup, Update
 from telegram.ext import ContextTypes, ConversationHandler
 
-MENU_DRIVER = "📝 Ariza Tashlash"
+MENU_DRIVER = "📝 Ulanish uchun Ariza"
 MENU_BRAND = "🎨 Brend Ariza"
 
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
@@ -12,7 +12,7 @@ MAIN_KEYBOARD = ReplyKeyboardMarkup(
 WELCOME_TEXT = (
     "🚖 *WB TAXI HUMO* botiga xush kelibsiz!\n\n"
     "Quyidagi menyulardan birini tanlang:\n\n"
-    "📝 *Ariza Tashlash* — Haydovchilik uchun ariza\n"
+    "📝 *Ulanish uchun Ariza* — Haydovchilik uchun ariza\n"
     "🎨 *Brend Ariza* — Mashinangizni brendlash uchun ariza"
 )
 

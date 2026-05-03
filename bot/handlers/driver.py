@@ -358,13 +358,9 @@ async def get_car_plate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
     await update.message.reply_text(
         "🎉 *Tabriklaymiz!*\n\n"
         "Arizangiz qabul qilindi. Tez orada operatorlarimiz "
-        "tomonidan ko'rib chiqilib, qayta javob yozib yuboriladi.\n\n"
-        "Qandaydir savollaringiz bo'lsa, "
-        "[@wbhumoadmin](https://t.me/wbhumoadmin) ga yozishingiz mumkin!\n\n"
-        "Yangi ariza tashlash uchun /start bosing.",
+        "tomonidan ko'rib chiqilib, qayta javob yozib yuboriladi.",
         parse_mode="Markdown",
         reply_markup=MAIN_KEYBOARD,
-        disable_web_page_preview=True,
     )
     context.user_data.clear()
     return ConversationHandler.END
