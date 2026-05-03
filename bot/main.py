@@ -2,7 +2,7 @@ import logging
 
 from telegram import Update
 from telegram.error import Conflict, NetworkError, TimedOut
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, PicklePersistence
 from telegram.request import HTTPXRequest
 
 from bot.config import BOT_TOKEN
@@ -70,9 +70,14 @@ def main() -> None:
         write_timeout=40.0,
     )
 
+    import os
+    persist_path = os.path.join(os.environ.get("PERSIST_DIR", "."), "bot_persistence.pkl")
+    persistence = PicklePersistence(filepath=persist_path)
+
     app = (
         Application.builder()
         .token(BOT_TOKEN)
+        .persistence(persistence)
         .request(request)
         .get_updates_request(get_updates_request)
         .post_init(warmup_templates)
