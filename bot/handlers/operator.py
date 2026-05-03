@@ -32,7 +32,11 @@ READY_TEXT = (
 )
 
 
-def build_operator_keyboard(applicant_user_id: int) -> InlineKeyboardMarkup:
+def build_operator_keyboard(applicant_user_id: int, in_progress: bool = False) -> InlineKeyboardMarkup:
+    progress_btn = InlineKeyboardButton(
+        "Jarayonda🟡" if in_progress else "Jarayonda🔴",
+        callback_data=f"op:progress:{applicant_user_id}",
+    )
     return InlineKeyboardMarkup(
         [
             [
@@ -42,7 +46,8 @@ def build_operator_keyboard(applicant_user_id: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(
                     "💬 Izoh berish", callback_data=f"op:comment:{applicant_user_id}"
                 ),
-            ]
+            ],
+            [progress_btn],
         ]
     )
 
@@ -144,6 +149,21 @@ async def on_operator_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 )
             except Exception:
                 pass
+
+    elif action == "progress":
+        # Toggle: 🔴 → 🟡 (once pressed, stays 🟡)
+        progress_state = context.bot_data.setdefault("progress_state", {})
+        already = progress_state.get(applicant_id, False)
+        if already:
+            await query.answer("Jarayon allaqachon boshlangan 🟡", show_alert=False)
+            return
+        progress_state[applicant_id] = True
+        try:
+            await query.edit_message_reply_markup(
+                reply_markup=build_operator_keyboard(applicant_id, in_progress=True)
+            )
+        except Exception:
+            logger.warning("progress: could not update keyboard for %s", applicant_id)
 
     elif action == "comment":
         pending = context.bot_data.setdefault("pending_comments", {})
