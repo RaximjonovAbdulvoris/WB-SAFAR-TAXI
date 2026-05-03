@@ -23,13 +23,9 @@ from telegram.ext import (
 logger = logging.getLogger(__name__)
 
 READY_TEXT = (
-    "✅ *WB TAXI HUMO*\n\n"
-    "Hurmatli mijoz, biz operatorlarimiz bilan sizni "
-    "*Wildberries Taxi* uchun *HUMO Taxoparki* tomonidan "
-    "ariza tashlab qo'ydik.\n\n"
-    "📩 SMS xabarnoma *10–15 daqiqa* ichida keladi. "
-    "Iltimos, savollaringiz bo'lsa @wbhumoadmin ga murojat qilishingiz mumkin\n\n"
-    "Rahmat 🤝"
+    "✅ WB TAXI HUMO ga arizangiz muvaffaqiyatli qabul qilindi!\n\n"
+    "📩 Iltimos, SMS xabarnomani kuting.  \n"
+    "Agar savollaringiz bo‘lsa, @wb_taxi_Humo orqali murojaat qilishingiz mumkin."
 )
 
 
