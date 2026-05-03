@@ -82,52 +82,65 @@ async def on_operator_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # 1. Retrieve stored message IDs for this application
         app_info = context.bot_data.get("app_messages", {}).get(applicant_id)
 
-        # 2. Copy messages to archive group (if configured)
+        # 2. Copy to archive group as albums (preserves album grouping)
         if ARCHIVE_GROUP and app_info:
             src_chat = app_info["group_chat_id"]
-            for msg_id in app_info["message_ids"]:
+            photo_ids = app_info.get("photo_msg_ids", [])
+            kb_msg_id = app_info.get("kb_msg_id")
+
+            # Copy photo albums — copy_messages keeps the album structure intact
+            if photo_ids:
+                try:
+                    await context.bot.copy_messages(
+                        chat_id=ARCHIVE_GROUP,
+                        from_chat_id=src_chat,
+                        message_ids=photo_ids,
+                    )
+                except Exception:
+                    logger.warning("archive: could not copy photo album")
+
+            # Copy info message (inline keyboard is automatically stripped)
+            if kb_msg_id:
                 try:
                     await context.bot.copy_message(
                         chat_id=ARCHIVE_GROUP,
                         from_chat_id=src_chat,
-                        message_id=msg_id,
+                        message_id=kb_msg_id,
                     )
-                    await asyncio.sleep(0.05)
                 except Exception:
-                    logger.warning("archive: could not copy msg %s", msg_id)
+                    logger.warning("archive: could not copy info message")
 
-        # 3. Notify applicant
+        # 3. Notify applicant (no parse_mode — plain text keeps @ link clean)
         try:
             await context.bot.send_message(
                 chat_id=applicant_id,
                 text=READY_TEXT,
-                parse_mode="Markdown",
             )
         except Exception as e:
             logger.warning("ready: could not notify applicant %s: %s", applicant_id, e)
 
         # 4. Delete all original messages from operator group
-        if app_info and op_chat_id:
+        if app_info:
             src_chat = app_info["group_chat_id"]
-            for msg_id in app_info["message_ids"]:
+            all_ids = app_info.get("photo_msg_ids", []) + (
+                [app_info["kb_msg_id"]] if app_info.get("kb_msg_id") else []
+            )
+            for msg_id in all_ids:
                 try:
                     await context.bot.delete_message(
                         chat_id=src_chat, message_id=msg_id
                     )
                 except Exception:
                     logger.warning("ready: could not delete msg %s", msg_id)
-            # Clean up stored data
             context.bot_data.get("app_messages", {}).pop(applicant_id, None)
 
-        # 5. Also delete the keyboard message (the one that was clicked)
+        # 5. Delete the keyboard message that was clicked
         try:
             await query.delete_message()
         except Exception:
-            # Fallback: edit it to show status
             try:
                 await query.edit_message_text(
-                    f"✅ *Tayyor* — ariza arxivlandi.\n👤 Operator: {op_name}",
-                    parse_mode="Markdown",
+                    f"✅ Tayyor — ariza arxivlandi.\n👤 Operator: {op_name}",
                 )
             except Exception:
                 pass

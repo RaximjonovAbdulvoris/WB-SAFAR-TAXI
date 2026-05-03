@@ -415,7 +415,9 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
     selfie_album_ids = [d.get("selfie"), d.get("litsenziya")]
     selfie_album_ids = [pid for pid in selfie_album_ids if pid]
 
-    sent_msg_ids: list[int] = []
+    # photo_msg_ids — album messages (copied as-is to archive)
+    # kb_msg_id    — info/keyboard message (copied separately without keyboard)
+    photo_msg_ids: list[int] = []
 
     if main_album_ids:
         main_media = [
@@ -427,7 +429,7 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
             for i, fid in enumerate(main_album_ids)
         ]
         main_sent = await context.bot.send_media_group(chat_id=chat_id, media=main_media)
-        sent_msg_ids.extend(m.message_id for m in main_sent)
+        photo_msg_ids.extend(m.message_id for m in main_sent)
 
     if selfie_album_ids:
         selfie_media = [
@@ -439,7 +441,7 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
             for i, fid in enumerate(selfie_album_ids)
         ]
         selfie_sent = await context.bot.send_media_group(chat_id=chat_id, media=selfie_media)
-        sent_msg_ids.extend(m.message_id for m in selfie_sent)
+        photo_msg_ids.extend(m.message_id for m in selfie_sent)
 
     if user_id:
         # Cache applicant info so operator.py can build a proper mention link
@@ -458,12 +460,12 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML,
             reply_markup=build_operator_keyboard(user_id),
         )
-        sent_msg_ids.append(kb_msg.message_id)
 
-        # Store all message IDs so "Tayyor" can delete them and copy to archive
+        # Store separately: photos (to copy as albums) + keyboard msg ID (to delete)
         context.bot_data.setdefault("app_messages", {})[user_id] = {
             "group_chat_id": chat_id,
-            "message_ids": sent_msg_ids,
+            "photo_msg_ids": photo_msg_ids,
+            "kb_msg_id": kb_msg.message_id,
         }
 
     logger.info("[driver] sent application to group #%s (%s)", idx + 1, chat_id)
