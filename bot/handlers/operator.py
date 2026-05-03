@@ -100,7 +100,6 @@ async def on_operator_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
         pending[(chat_id, op_id)] = applicant_id
 
-        # Build applicant link for the prompt
         info = context.bot_data.get("applicant_info", {}).get(applicant_id, {})
         ap_name = h(info.get("name") or "Arizachi")
         ap_username = info.get("username") or ""
@@ -227,7 +226,6 @@ async def on_user_reply_message(update: Update, context: ContextTypes.DEFAULT_TY
         else f'<a href="tg://user?id={user.id}">{h(user.full_name or "Foydalanuvchi")}</a>'
     )
 
-    # Keep applicant_info fresh so operator "Izoh berish" link stays correct
     context.bot_data.setdefault("applicant_info", {})[user.id] = {
         "name": user.full_name or "Arizachi",
         "username": user.username or "",
@@ -257,15 +255,8 @@ async def on_user_reply_message(update: Update, context: ContextTypes.DEFAULT_TY
 # ------------------------------------------------------------------ #
 
 def register_operator_handlers(app):
-    # Operator buttons in group (Tayyor / Izoh berish)
     app.add_handler(CallbackQueryHandler(on_operator_button, pattern=r"^op:"))
-
-    # User presses "Javob yozish" in private chat
-    app.add_handler(
-        CallbackQueryHandler(on_user_reply_button, pattern=r"^user:reply:"),
-    )
-
-    # Operator types comment in group
+    app.add_handler(CallbackQueryHandler(on_user_reply_button, pattern=r"^user:reply:"))
     app.add_handler(
         MessageHandler(
             filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
@@ -273,8 +264,6 @@ def register_operator_handlers(app):
         ),
         group=1,
     )
-
-    # User types reply in private chat (only fires when pending_user_replies is set)
     app.add_handler(
         MessageHandler(
             filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
