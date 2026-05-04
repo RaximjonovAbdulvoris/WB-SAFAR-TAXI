@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from html import escape as h
 
@@ -23,6 +24,10 @@ from bot.handlers.operator import build_operator_keyboard
 from bot.handlers.start import MAIN_KEYBOARD, MENU_DRIVER, cancel
 
 logger = logging.getLogger(__name__)
+
+# Module-level dict to track delayed progress check tasks per user.
+# Not stored in user_data so they don't end up in pickle persistence.
+_pending_car_progress_tasks: dict[int, asyncio.Task] = {}
 
 (
     NAME,
@@ -312,13 +317,43 @@ async def litsenziya_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 # -------------------- 12. car photos (4) --------------------
+async def _delayed_car_progress(chat_id: int, user_id: int,
+                                 user_data: dict, bot) -> None:
+    """After a short delay, send a progress message if photos are still incomplete.
+
+    Used for album uploads: when an album arrives with <4 photos, we wait briefly
+    in case more are coming, then prompt the user for the remaining ones.
+    """
+    try:
+        await asyncio.sleep(2.0)
+        photos = user_data.get("car_photos", [])
+        count = len(photos)
+        if 0 < count < 4:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=(
+                    f"✅ {count}/4 ta rasm qabul qilindi.\n"
+                    f"Yana *{4 - count} ta* rasm jo'nating "
+                    f"(qolgan tomonlari)."
+                ),
+                parse_mode="Markdown",
+            )
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.warning("car progress check failed: %s", e)
+    finally:
+        _pending_car_progress_tasks.pop(user_id, None)
+
+
 async def get_car_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     """Accept car photos one-by-one OR as a media group (album).
 
     Rules:
     - Photos in an album arrive as separate updates with the same media_group_id.
-    - Album photos: collect silently, send ONE message only when total reaches 4.
-    - Individual photos: send a progress message after each one.
+    - Album photos: collect silently, but schedule a debounced progress check.
+      If 2 seconds pass without new photos and total < 4, prompt user for the rest.
+    - Individual photos: send a progress message immediately.
     - If user already sent 4+, ignore extras and stay on CAR_PLATE quietly.
     """
     photos = context.user_data.setdefault("car_photos", [])
@@ -337,10 +372,15 @@ async def get_car_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     photos.append(update.message.photo[-1].file_id)
     is_album = bool(update.message.media_group_id)
+    user_id = update.effective_user.id if update.effective_user else 0
+
+    # Cancel any pending progress check (we just got a new photo)
+    prev_task = _pending_car_progress_tasks.pop(user_id, None)
+    if prev_task and not prev_task.done():
+        prev_task.cancel()
 
     if len(photos) >= 4:
-        # Done — clean up and ask for plate number
-        context.user_data.pop("car_photo_replied_groups", None)
+        # Done — ask for plate number
         await update.message.reply_text(
             "✅ *4 ta rasm qabul qilindi!*\n\n"
             "🔢 Endi mashinangizning *davlat raqamini* yozing (masalan: `01A123BC`):",
@@ -349,11 +389,17 @@ async def get_car_photos(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return CAR_PLATE
 
     if is_album:
-        # Part of an album but haven't reached 4 yet — stay silent.
-        # This avoids spamming "1/4", "2/4" when photos arrive milliseconds apart.
+        # Schedule debounced progress check: if no more photos arrive in 2s,
+        # tell the user how many they still need to send.
+        chat_id = update.effective_chat.id
+        task = asyncio.create_task(
+            _delayed_car_progress(chat_id, user_id,
+                                   context.user_data, context.bot)
+        )
+        _pending_car_progress_tasks[user_id] = task
         return CAR_PHOTOS
 
-    # Single photo, not an album — show progress so user knows how many more to send
+    # Single photo, not an album — show progress immediately
     await update.message.reply_text(
         f"✅ {len(photos)}/4 ta rasm qabul qilindi. "
         f"Yana *{4 - len(photos)} ta* rasm jo'nating.",
