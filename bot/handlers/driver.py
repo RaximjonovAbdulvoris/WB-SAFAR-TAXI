@@ -256,9 +256,8 @@ async def get_litsenziya(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def _send_car_photo_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send instruction text first, then 4 car template images as a media group."""
+    """Send 4 car template images as a media group with instruction caption on first image."""
     car_names = ["car_front", "car_back", "car_left", "car_right"]
-    labels = ["1️⃣ Old", "2️⃣ Orqa", "3️⃣ Chap", "4️⃣ O'ng"]
     instruction = (
         "🚗 *9-12/12 — Mashina rasmlari*\n\n"
         "Mashinangizning *4 ta tomonidan* rasmga olib jo'nating:\n"
@@ -266,24 +265,27 @@ async def _send_car_photo_prompt(update: Update, context: ContextTypes.DEFAULT_T
         "Hammasini birin-ketin (4 ta rasm) jo'natishingiz kerak."
     )
 
-    # Send instruction text first so it's always visible
-    await update.message.reply_text(instruction, parse_mode="Markdown")
-
     cache = context.bot_data.setdefault("template_file_ids", {})
     media = []
     opened_files = []
 
     try:
-        for i, (name, label) in enumerate(zip(car_names, labels)):
+        for i, name in enumerate(car_names):
+            caption = instruction if i == 0 else None
+            parse_mode = "Markdown" if i == 0 else None
             file_id = cache.get(name)
             if file_id:
-                media.append(InputMediaPhoto(media=file_id, caption=label))
+                media.append(
+                    InputMediaPhoto(media=file_id, caption=caption, parse_mode=parse_mode)
+                )
             else:
                 path = template_path(name)
                 if path:
                     f = open(path, "rb")
                     opened_files.append((name, f))
-                    media.append(InputMediaPhoto(media=f, caption=label))
+                    media.append(
+                        InputMediaPhoto(media=f, caption=caption, parse_mode=parse_mode)
+                    )
 
         if media:
             sent_msgs = await update.message.reply_media_group(media=media)
@@ -291,8 +293,11 @@ async def _send_car_photo_prompt(update: Update, context: ContextTypes.DEFAULT_T
             for i, msg in enumerate(sent_msgs):
                 if msg.photo and i < len(car_names):
                     cache[car_names[i]] = msg.photo[-1].file_id
+        else:
+            await update.message.reply_text(instruction, parse_mode="Markdown")
     except Exception as e:
         logger.warning("car template rasmlar yuborilmadi: %s", e)
+        await update.message.reply_text(instruction, parse_mode="Markdown")
     finally:
         for _, f in opened_files:
             f.close()
