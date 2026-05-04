@@ -10,7 +10,7 @@ MAIN_KEYBOARD = ReplyKeyboardMarkup(
 )
 
 WELCOME_TEXT = (
-    "🚖 *WB TAXI HUMO* botiga xush kelibsiz!\n\n"
+    "🚖 *WB TAXI LEGENDA* botiga xush kelibsiz!\n\n"
     "Quyidagi menyulardan birini tanlang:\n\n"
     "📝 *Ulanish uchun Ariza* — Haydovchilik uchun ariza\n"
     "🎨 *Brend Ariza* — Mashinangizni brendlash uchun ariza"
