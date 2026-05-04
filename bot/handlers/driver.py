@@ -251,14 +251,70 @@ async def get_litsenziya(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return await litsenziya_wrong(update, context)
     context.user_data["litsenziya"] = update.message.photo[-1].file_id
     context.user_data["car_photos"] = []
-    await _send_prompt(
-        update, context,
+    await _send_car_photo_prompt(update, context)
+    return CAR_PHOTOS
+
+
+async def _send_car_photo_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Send 4 car template images as a media group, with instructions as caption."""
+    car_names = ["car_front", "car_back", "car_left", "car_right"]
+    labels = ["Old", "Orqa", "Chap", "O'ng"]
+    caption = (
         "🚗 9-12/12 — Mashinangizning *4 ta tarafidan* rasmga olib jo'nating "
         "(old, orqa, chap, o'ng).\n\n"
-        "Hammasini birin-ketin (4 ta rasm) jo'natishingiz kerak.",
-        "car_sides",
+        "Hammasini birin-ketin (4 ta rasm) jo'natishingiz kerak."
     )
-    return CAR_PHOTOS
+
+    cache = context.bot_data.setdefault("template_file_ids", {})
+    media = []
+    opened_files = []
+
+    try:
+        for i, (name, label) in enumerate(zip(car_names, labels)):
+            file_id = cache.get(name)
+            if file_id:
+                media.append(
+                    InputMediaPhoto(
+                        media=file_id,
+                        caption=caption if i == 0 else label,
+                        parse_mode="Markdown" if i == 0 else None,
+                    )
+                )
+            else:
+                path = template_path(name)
+                if path:
+                    f = open(path, "rb")
+                    opened_files.append((name, f))
+                    media.append(
+                        InputMediaPhoto(
+                            media=f,
+                            caption=caption if i == 0 else label,
+                            parse_mode="Markdown" if i == 0 else None,
+                        )
+                    )
+
+        if media:
+            sent_msgs = await update.message.reply_media_group(media=media)
+            # Cache returned file_ids
+            for msg in sent_msgs:
+                if msg.photo:
+                    caption_text = msg.caption or ""
+                    for label, name in zip(labels, car_names):
+                        if label in caption_text or caption_text == label:
+                            cache[name] = msg.photo[-1].file_id
+                            break
+                    else:
+                        # First image (with long caption) — cache as car_front
+                        if "9-12/12" in caption_text and "car_front" not in cache:
+                            cache["car_front"] = msg.photo[-1].file_id
+        else:
+            await update.message.reply_text(caption, parse_mode="Markdown")
+    except Exception as e:
+        logger.warning("car template rasmlar yuborilmadi: %s", e)
+        await update.message.reply_text(caption, parse_mode="Markdown")
+    finally:
+        for _, f in opened_files:
+            f.close()
 
 
 async def litsenziya_wrong(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
