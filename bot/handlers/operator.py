@@ -236,7 +236,7 @@ async def on_operator_text_in_group(update: Update, context: ContextTypes.DEFAUL
     try:
         await context.bot.send_message(
             chat_id=applicant_id,
-            text=f"💬 <b>WB TAXI HUMO — Operator izohi:</b>\n\n{h(text)}",
+            text=f"💬 <b>WB TAXI LEGENDA — Operator izohi:</b>\n\n{h(text)}",
             parse_mode="HTML",
             reply_markup=_reply_keyboard(chat.id),
         )
