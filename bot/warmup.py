@@ -25,7 +25,10 @@ TEMPLATE_NAMES = [
     "tech_back",
     "selfie",
     "litsenziya",
-    "car_sides",
+    "car_front",
+    "car_back",
+    "car_left",
+    "car_right",
 ]
 
 

@@ -256,14 +256,18 @@ async def get_litsenziya(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def _send_car_photo_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Send 4 car template images as a media group, with instructions as caption."""
+    """Send instruction text first, then 4 car template images as a media group."""
     car_names = ["car_front", "car_back", "car_left", "car_right"]
-    labels = ["Old", "Orqa", "Chap", "O'ng"]
-    caption = (
-        "🚗 9-12/12 — Mashinangizning *4 ta tarafidan* rasmga olib jo'nating "
-        "(old, orqa, chap, o'ng).\n\n"
+    labels = ["1️⃣ Old", "2️⃣ Orqa", "3️⃣ Chap", "4️⃣ O'ng"]
+    instruction = (
+        "🚗 *9-12/12 — Mashina rasmlari*\n\n"
+        "Mashinangizning *4 ta tomonidan* rasmga olib jo'nating:\n"
+        "1️⃣ Old • 2️⃣ Orqa • 3️⃣ Chap • 4️⃣ O'ng\n\n"
         "Hammasini birin-ketin (4 ta rasm) jo'natishingiz kerak."
     )
+
+    # Send instruction text first so it's always visible
+    await update.message.reply_text(instruction, parse_mode="Markdown")
 
     cache = context.bot_data.setdefault("template_file_ids", {})
     media = []
@@ -273,45 +277,22 @@ async def _send_car_photo_prompt(update: Update, context: ContextTypes.DEFAULT_T
         for i, (name, label) in enumerate(zip(car_names, labels)):
             file_id = cache.get(name)
             if file_id:
-                media.append(
-                    InputMediaPhoto(
-                        media=file_id,
-                        caption=caption if i == 0 else label,
-                        parse_mode="Markdown" if i == 0 else None,
-                    )
-                )
+                media.append(InputMediaPhoto(media=file_id, caption=label))
             else:
                 path = template_path(name)
                 if path:
                     f = open(path, "rb")
                     opened_files.append((name, f))
-                    media.append(
-                        InputMediaPhoto(
-                            media=f,
-                            caption=caption if i == 0 else label,
-                            parse_mode="Markdown" if i == 0 else None,
-                        )
-                    )
+                    media.append(InputMediaPhoto(media=f, caption=label))
 
         if media:
             sent_msgs = await update.message.reply_media_group(media=media)
-            # Cache returned file_ids
-            for msg in sent_msgs:
-                if msg.photo:
-                    caption_text = msg.caption or ""
-                    for label, name in zip(labels, car_names):
-                        if label in caption_text or caption_text == label:
-                            cache[name] = msg.photo[-1].file_id
-                            break
-                    else:
-                        # First image (with long caption) — cache as car_front
-                        if "9-12/12" in caption_text and "car_front" not in cache:
-                            cache["car_front"] = msg.photo[-1].file_id
-        else:
-            await update.message.reply_text(caption, parse_mode="Markdown")
+            # Cache returned file_ids by index
+            for i, msg in enumerate(sent_msgs):
+                if msg.photo and i < len(car_names):
+                    cache[car_names[i]] = msg.photo[-1].file_id
     except Exception as e:
         logger.warning("car template rasmlar yuborilmadi: %s", e)
-        await update.message.reply_text(caption, parse_mode="Markdown")
     finally:
         for _, f in opened_files:
             f.close()
@@ -496,6 +477,9 @@ async def _send_to_driver_group(context: ContextTypes.DEFAULT_TYPE):
         photo_msg_ids.extend(m.message_id for m in selfie_sent)
 
     if user_id:
+        # Clear old progress state so new application shows fresh 🔴 button
+        context.bot_data.get("progress_state", {}).pop(user_id, None)
+
         # Cache applicant info so operator.py can build a proper mention link
         applicant_cache = context.bot_data.setdefault("applicant_info", {})
         applicant_cache[user_id] = {

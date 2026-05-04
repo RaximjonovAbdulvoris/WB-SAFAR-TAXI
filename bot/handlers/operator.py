@@ -151,6 +151,7 @@ async def on_operator_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 except Exception:
                     pass  # step 5 will handle it via query.delete_message()
             context.bot_data.get("app_messages", {}).pop(applicant_id, None)
+        context.bot_data.get("progress_state", {}).pop(applicant_id, None)
 
         # 5. Delete the keyboard message that was clicked (fallback if step 4 missed it)
         try:
