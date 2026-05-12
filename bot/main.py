@@ -9,7 +9,7 @@ from bot.config import BOT_TOKEN
 from bot.handlers.brand import build_brand_conversation
 from bot.handlers.driver import build_driver_conversation
 from bot.handlers.operator import register_operator_handlers
-from bot.handlers.start import start
+from bot.handlers.start import build_payout_handler, start
 from bot.warmup import warmup_templates
 
 logging.basicConfig(
@@ -85,6 +85,7 @@ def main() -> None:
     )
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(build_payout_handler())
     app.add_handler(build_driver_conversation())
     app.add_handler(build_brand_conversation())
     register_operator_handlers(app)
