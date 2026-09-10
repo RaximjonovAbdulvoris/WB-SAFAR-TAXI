@@ -21,7 +21,7 @@ WELCOME_TEXT = (
 PAYOUT_TEXT = (
     "💰 *PUL YECHISH BOTI:* @safar_taxi_bot\n\n"
     "📞 *PARK NOMERI:* +998908233334\n\n"
-    "✉️ *TELEGRAM ORQALI MUROJAT:* @WBLEGENDATAXI"
+    "✉️ *TELEGRAM ORQALI MUROJAT:* @WBsafarTAXI"
 )
 
 
